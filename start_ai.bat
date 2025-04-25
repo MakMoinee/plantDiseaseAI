@@ -1,0 +1,1 @@
+.\Scripts\activate && python api.py
