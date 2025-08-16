@@ -15,7 +15,7 @@ model = torch.hub.load('ultralytics/yolov5', 'custom', path='last.pt')  # Replac
 app = Flask(__name__)
 
 # Stream from ESP32 camera
-url = 'http://192.168.1.7:4747'  # Replace with your ESP32 camera stream URL
+url = 'http://192.168.1.5:4747'  # Replace with your ESP32 camera stream URL
 cap = cv2.VideoCapture(url)
 
 # Check if the stream opened successfully
