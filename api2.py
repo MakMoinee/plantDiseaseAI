@@ -6,6 +6,8 @@ import io
 import base64
 from flask_cors import CORS
 
+import pathlib
+
 app = Flask(__name__)
 CORS(app)
 
@@ -17,6 +19,9 @@ DEFAULT_YOLOV5_MODEL = ""
 inference_model = None
 current_loaded_model_type = "unknown"
 class_name_to_id = {}
+
+temp = pathlib.PosixPath
+pathlib.PosixPath = pathlib.WindowsPath
 
 # --- Load Model ---
 def load_detection_model():
