@@ -1,0 +1,1 @@
+.\Scripts\activate && cd yolov5 && python train.py --img 640 --batch 5 --epochs 300 --data coco128.yaml --weights yolov5s.pt --cache --patience 200

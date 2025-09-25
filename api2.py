@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import torch
 from PIL import Image
 import io
 import base64
 from flask_cors import CORS
-
 import pathlib
+import os
+import cv2
+import time
 
 app = Flask(__name__)
 CORS(app)
+
+# Ensure static folder exists
+STATIC_FOLDER = os.path.join(os.getcwd(), "static")
+os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 # --- Model Paths ---
 TRAINED_MODEL_FULL_PATH = "./last.pt"
@@ -48,7 +54,7 @@ def load_detection_model():
         print(f"[ERROR] Failed to load model: {e}")
         inference_model = None
 
-# --- Inference Endpoint ---
+# --- Inference Endpoint for Single Frame ---
 @app.route('/detect_frame', methods=['POST'])
 def detect_frame_api():
     try:
@@ -97,8 +103,96 @@ def detect_frame_api():
         print(f"[ERROR] detect_frame_api failed: {e}")
         return jsonify({"error": str(e), "faces": []}), 500
 
+# --- Inference Endpoint for Video ---
+@app.route('/detect_video', methods=['POST'])
+def detect_video_api():
+    try:
+        if 'video' not in request.files:
+            return jsonify({"error": "No video file provided"}), 400
+
+        video_file = request.files['video']
+
+        # Save uploaded video temporarily
+        temp_input_path = os.path.join(STATIC_FOLDER, f"input_{int(time.time())}.mp4")
+        video_file.save(temp_input_path)
+
+        # Prepare output video path (in static folder)
+        output_filename = f"output_{int(time.time())}.mp4"
+        temp_output_path = os.path.join(STATIC_FOLDER, output_filename)
+
+        # Open video
+        cap = cv2.VideoCapture(temp_input_path)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Run YOLOv5 inference
+            results = inference_model(frame)
+            annotated_frame = results.render()[0]
+
+            out.write(annotated_frame)
+
+        cap.release()
+        out.release()
+
+        return jsonify({
+            "output_video_path": f"/static/{output_filename}"
+        })
+
+    except Exception as e:
+        print(f"[ERROR] detect_video_api failed: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+# --- Inference Endpoint for Image ---
+@app.route('/detect_image', methods=['POST'])
+def detect_image_api():
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file provided"}), 400
+
+        image_file = request.files['image']
+
+        # Save uploaded image temporarily
+        input_filename = f"input_{int(time.time())}.jpg"
+        temp_input_path = os.path.join(STATIC_FOLDER, input_filename)
+        image_file.save(temp_input_path)
+
+        # Prepare output image path (in static folder)
+        output_filename = f"output_{int(time.time())}.jpg"
+        temp_output_path = os.path.join(STATIC_FOLDER, output_filename)
+
+        # Run YOLOv5 inference
+        results = inference_model(temp_input_path)
+        results.save(save_dir=STATIC_FOLDER, exist_ok=True)  # YOLO saves annotated image automatically
+
+        # YOLO usually saves under static/ with "input_filename" name
+        # To make sure we return the correct output, rename
+        detected_output_path = os.path.join(STATIC_FOLDER, os.path.basename(temp_input_path))
+        if os.path.exists(detected_output_path):
+            os.rename(detected_output_path, temp_output_path)
+
+        return jsonify({
+            "output_image_path": f"/static/{output_filename}"
+        })
+
+    except Exception as e:
+        print(f"[ERROR] detect_image_api failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# --- Serve static files (processed videos) ---
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(STATIC_FOLDER, filename)
+
 # --- Initialize ---
 if __name__ == '__main__':
-    import os
     load_detection_model()
     app.run(host='0.0.0.0', port=5000)
